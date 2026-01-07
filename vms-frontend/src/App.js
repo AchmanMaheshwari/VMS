@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import logo1 from "./assets/logo1.png";
 
 // --- Helper Functions & Constants ---
-const API_BASE_URL = "process.env.REACT_APP_API_URL;"; // Replaced with actual backend URL
+const API_BASE_URL = "https://api.render.com/deploy/srv-d2ugrdp5pdvs73afc3d0?key=btRbJ9S0ZiM;"; // Replaced with actual backend URL
 
 const PERMISSIONS = {
   ADMIN: [
