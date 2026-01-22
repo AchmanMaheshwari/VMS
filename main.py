@@ -3,10 +3,11 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
-import mysql.connector
+import psycopg2
+import psycopg2.extras
 from datetime import datetime, timedelta
 import hashlib
-import json
+import JSONB
 import jwt
 import os
 
@@ -116,7 +117,8 @@ class VMSDatabase:
 
     def get_connection(self):
         try:
-            conn = mysql.connector.connect(**self.config)
+            conn = psycopg2.connect(**self.config)
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             return conn
         except mysql.connector.Error as err:
             raise HTTPException(status_code=500, detail=f"Database connection error: {err}")
@@ -242,7 +244,7 @@ async def create_user(user_data: UserCreate, current_user: dict = Depends(requir
         
         cursor.execute("""
             INSERT INTO users (empid, empname, emp_mobile_no, password_hash, user_role, created_by, created_date)
-            VALUES (%s, %s, %s, %s, %s, %s, NOW())
+            VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
         """, (user_data.empid.upper(), user_data.empname, user_data.emp_mobile_no, 
               hashed_password, user_data.user_role, current_user['empid']))
         conn.commit()
@@ -296,7 +298,7 @@ async def lock_user(user_action: UserActionWithPassword, current_user: dict = De
         # Proceed to lock
         cursor.execute("""
             UPDATE users 
-            SET status = 'L', modify_by = %s, modify_date = NOW()
+            SET status = 'L', modify_by = %s, modify_date = CURRENT_TIMESTAMP
             WHERE empid = %s
         """, (current_user['empid'], user_action.empid.upper()))
         conn.commit()
@@ -333,7 +335,7 @@ async def unlock_user(user_action: UserActionWithPassword, current_user: dict = 
         # Proceed to unlock
         cursor.execute("""
             UPDATE users 
-            SET status = 'A', failed_attempts = 0, modify_by = %s, modify_date = NOW()
+            SET status = 'A', failed_attempts = 0, modify_by = %s, modify_date = CURRENT_TIMESTAMP
             WHERE empid = %s
         """, (current_user['empid'], user_action.empid.upper()))
         conn.commit()
@@ -396,7 +398,7 @@ async def create_visitor_entry(visitor_data: VisitorCreate, current_user: dict =
                 card_no, name, mobile, email, id_type, id_number, representing, purpose,
                 approve, emp_id, emp_name, emp_mobile_no, fellow_visitors, fellow_visitors_details,
                 visitor_category, created_by, created_date
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
         """, (
             card_no,
             visitor_data.name,
@@ -411,7 +413,7 @@ async def create_visitor_entry(visitor_data: VisitorCreate, current_user: dict =
             emp_name,
             visitor_data.emp_mobile_no,
             visitor_data.fellow_visitors or 0,
-            json.dumps([f.dict() for f in visitor_data.fellow_visitors_details]) if visitor_data.fellow_visitors_details else None,
+            jsonB.dumps([f.dict() for f in visitor_data.fellow_visitors_details]) if visitor_data.fellow_visitors_details else None,
             visitor_data.visitor_category,
             current_user['empid']
         ))
@@ -502,10 +504,10 @@ async def approve_visitor(
             cursor.execute("""
                 UPDATE vms
                 SET approve = %s,
-                    approve_dt = NOW(),
+                    approve_dt = CURRENT_TIMESTAMP,
                     approved_by = %s,
                     modify_by = %s,
-                    modify_date = NOW()
+                    modify_date = CURRENT_TIMESTAMP
                 WHERE card_no = %s
             """, (
                 "A",
@@ -518,10 +520,10 @@ async def approve_visitor(
             cursor.execute("""
                 UPDATE vms
                 SET approve = %s,
-                    approve_dt = NOW(),
+                    approve_dt = CURRENT_TIMESTAMP,
                     approved_by = %s,
                     modify_by = %s,
-                    modify_date = NOW()
+                    modify_date = CURRENT_TIMESTAMP
                 WHERE card_no = %s
             """, (
                 "R",
@@ -615,7 +617,7 @@ async def get_reports(report_type: str, date: Optional[str] = None, current_user
                     SUM(CASE WHEN approve='R' THEN 1 ELSE 0 END) as rejected,
                     SUM(CASE WHEN approve='A' AND out_time IS NULL THEN 1 ELSE 0 END) as currently_inside,
                     SUM(CASE WHEN approve='A' AND out_time IS NOT NULL THEN 1 ELSE 0 END) as checked_out
-                FROM vms WHERE entry_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+                FROM vms WHERE entry_date >= CURRENT_DATE - INTERVAL '30 days'
             """)
             result = cursor.fetchone()
             
