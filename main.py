@@ -22,6 +22,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # Security
 security = HTTPBearer()
 SECRET_KEY = "Master@123"
