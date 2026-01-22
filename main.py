@@ -189,58 +189,58 @@ def db_test():
         return {"error": str(e)}
 
 # API Endpoints
-@app.post("/api/auth/login", response_model=Token)
-async def login(user_login: UserLogin):
-    db = VMSDatabase()
-    conn = db.get_connection()
-    cursor = conn.cursor(dictionary=True)
+# @app.post("/api/auth/login", response_model=Token)
+# async def login(user_login: UserLogin):
+#     db = VMSDatabase()
+#     conn = db.get_connection()
+#     cursor = conn.cursor(dictionary=True)
     
-    try:
-        cursor.execute("SELECT * FROM users WHERE empid = %s", (user_login.empid.upper(),))
-        user = cursor.fetchone()
+#     try:
+#         cursor.execute("SELECT * FROM users WHERE empid = %s", (user_login.empid.upper(),))
+#         user = cursor.fetchone()
         
-        if not user:
-            raise HTTPException(status_code=401, detail="Employee ID not found")
+#         if not user:
+#             raise HTTPException(status_code=401, detail="Employee ID not found")
         
-        if user['status'] in ['L', 'I']:
-            raise HTTPException(status_code=401, detail="Account locked or inactive")
+#         if user['status'] in ['L', 'I']:
+#             raise HTTPException(status_code=401, detail="Account locked or inactive")
         
-        if not verify_password(user_login.password, user['password_hash']):
-            # Default failed_attempts to 0 if it's None
-            failed_attempts = user['failed_attempts'] or 0
-            # Update failed attempts
-            new_attempts = user['failed_attempts'] + 1
-            # Update failed_attempts in DB
-            cursor.execute("UPDATE users SET failed_attempts = %s WHERE id = %s", 
-                   (new_attempts, user['id']))
-            if new_attempts >= 5:
-                cursor.execute("UPDATE users SET status = 'L' WHERE id = %s", (user['id'],))
-            conn.commit()
+#         if not verify_password(user_login.password, user['password_hash']):
+#             # Default failed_attempts to 0 if it's None
+#             failed_attempts = user['failed_attempts'] or 0
+#             # Update failed attempts
+#             new_attempts = user['failed_attempts'] + 1
+#             # Update failed_attempts in DB
+#             cursor.execute("UPDATE users SET failed_attempts = %s WHERE id = %s", 
+#                    (new_attempts, user['id']))
+#             if new_attempts >= 5:
+#                 cursor.execute("UPDATE users SET status = 'L' WHERE id = %s", (user['id'],))
+#             conn.commit()
 
-            if new_attempts >= 5:
-                raise HTTPException(status_code=401, detail="Account locked due to failed attempts")
-            conn.commit()
-            raise HTTPException(status_code=401, detail="Incorrect password")
+#             if new_attempts >= 5:
+#                 raise HTTPException(status_code=401, detail="Account locked due to failed attempts")
+#             conn.commit()
+#             raise HTTPException(status_code=401, detail="Incorrect password")
         
-        # Reset failed attempts and update last login
-        cursor.execute("UPDATE users SET failed_attempts = 0, last_login = %s WHERE id = %s",
-                      (datetime.now(), user['id']))
-        conn.commit()
+#         # Reset failed attempts and update last login
+#         cursor.execute("UPDATE users SET failed_attempts = 0, last_login = %s WHERE id = %s",
+#                       (datetime.now(), user['id']))
+#         conn.commit()
         
-        access_token = create_access_token(data={"sub": user['empid']})
+#         access_token = create_access_token(data={"sub": user['empid']})
         
-        return {
-            "access_token": access_token,
-            "token_type": "bearer",
-            "user_info": {
-                "empid": user['empid'],
-                "empname": user['empname'],
-                "user_role": user['user_role']
-            }
-        }
-    finally:
-        cursor.close()
-        conn.close()
+#         return {
+#             "access_token": access_token,
+#             "token_type": "bearer",
+#             "user_info": {
+#                 "empid": user['empid'],
+#                 "empname": user['empname'],
+#                 "user_role": user['user_role']
+#             }
+#         }
+#     finally:
+#         cursor.close()
+#         conn.close()
 
 @app.post("/api/users", response_model=ApiResponse)
 async def create_user(user_data: UserCreate, current_user: dict = Depends(require_permission('CREATE_USER'))):
