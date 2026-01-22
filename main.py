@@ -171,6 +171,23 @@ def require_permission(permission: str):
         return current_user
     return permission_checker
 
+# API Endpoints for Db test
+@app.get("/db-test")
+def db_test():
+    try:
+        import psycopg2, os
+        psycopg2.connect(
+            host=os.getenv("DB_HOST"),
+            dbname=os.getenv("DB_NAME"),
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASSWORD"),
+            port=int(os.getenv("DB_PORT")),
+            sslmode="require",
+        ).close()
+        return {"db": "connected"}
+    except Exception as e:
+        return {"error": str(e)}
+
 # API Endpoints
 @app.post("/api/auth/login", response_model=Token)
 async def login(user_login: UserLogin):
