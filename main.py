@@ -7,7 +7,7 @@ import psycopg2
 import psycopg2.extras
 from datetime import datetime, timedelta
 import hashlib
-import JSONB
+import json
 import jwt
 import os
 
@@ -32,11 +32,12 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # Database Configuration
 DB_CONFIG = {
-    'host': os.getenv("DB_HOST", "metro.proxy.rlwy.net"),
-    'user': os.getenv("DB_USER", "root"),
-    'password': os.getenv("DB_PASSWORD", "My_pass"),
-    'database': os.getenv("DB_NAME", "railway"),
-    'port': int(os.getenv("DB_PORT", "28600"))
+    "host": os.getenv("DB_HOST"),
+    "dbname": os.getenv("DB_NAME"),
+    "user": os.getenv("DB_USER"),
+    "password": os.getenv("DB_PASSWORD"),
+    "port": int(os.getenv("DB_PORT", 5432)),
+    "sslmode": "require"
 }
 
 
@@ -120,7 +121,7 @@ class VMSDatabase:
             conn = psycopg2.connect(**self.config)
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             return conn
-        except mysql.connector.Error as err:
+        except Exception as err:
             raise HTTPException(status_code=500, detail=f"Database connection error: {err}")
 
 # Authentication Functions
@@ -147,7 +148,8 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         
         db = VMSDatabase()
         conn = db.get_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
         
         cursor.execute("SELECT * FROM users WHERE empid = %s AND status = 'A'", (empid,))
         user = cursor.fetchone()
@@ -189,58 +191,59 @@ def db_test():
         return {"error": str(e)}
 
 # API Endpoints
-# @app.post("/api/auth/login", response_model=Token)
-# async def login(user_login: UserLogin):
-#     db = VMSDatabase()
-#     conn = db.get_connection()
-#     cursor = conn.cursor(dictionary=True)
-    
-#     try:
-#         cursor.execute("SELECT * FROM users WHERE empid = %s", (user_login.empid.upper(),))
-#         user = cursor.fetchone()
-        
-#         if not user:
-#             raise HTTPException(status_code=401, detail="Employee ID not found")
-        
-#         if user['status'] in ['L', 'I']:
-#             raise HTTPException(status_code=401, detail="Account locked or inactive")
-        
-#         if not verify_password(user_login.password, user['password_hash']):
-#             # Default failed_attempts to 0 if it's None
-#             failed_attempts = user['failed_attempts'] or 0
-#             # Update failed attempts
-#             new_attempts = user['failed_attempts'] + 1
-#             # Update failed_attempts in DB
-#             cursor.execute("UPDATE users SET failed_attempts = %s WHERE id = %s", 
-#                    (new_attempts, user['id']))
-#             if new_attempts >= 5:
-#                 cursor.execute("UPDATE users SET status = 'L' WHERE id = %s", (user['id'],))
-#             conn.commit()
+@app.post("/api/auth/login", response_model=Token)
+async def login(user_login: UserLogin):
+    db = VMSDatabase()
+    conn = db.get_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-#             if new_attempts >= 5:
-#                 raise HTTPException(status_code=401, detail="Account locked due to failed attempts")
-#             conn.commit()
-#             raise HTTPException(status_code=401, detail="Incorrect password")
+    
+    try:
+        cursor.execute("SELECT * FROM users WHERE empid = %s", (user_login.empid.upper(),))
+        user = cursor.fetchone()
         
-#         # Reset failed attempts and update last login
-#         cursor.execute("UPDATE users SET failed_attempts = 0, last_login = %s WHERE id = %s",
-#                       (datetime.now(), user['id']))
-#         conn.commit()
+        if not user:
+            raise HTTPException(status_code=401, detail="Employee ID not found")
         
-#         access_token = create_access_token(data={"sub": user['empid']})
+        if user['status'] in ['L', 'I']:
+            raise HTTPException(status_code=401, detail="Account locked or inactive")
         
-#         return {
-#             "access_token": access_token,
-#             "token_type": "bearer",
-#             "user_info": {
-#                 "empid": user['empid'],
-#                 "empname": user['empname'],
-#                 "user_role": user['user_role']
-#             }
-#         }
-#     finally:
-#         cursor.close()
-#         conn.close()
+        if not verify_password(user_login.password, user['password_hash']):
+            # Default failed_attempts to 0 if it's None
+            failed_attempts = user['failed_attempts'] or 0
+            # Update failed attempts
+            new_attempts = user['failed_attempts'] + 1
+            # Update failed_attempts in DB
+            cursor.execute("UPDATE users SET failed_attempts = %s WHERE id = %s", 
+                   (new_attempts, user['id']))
+            if new_attempts >= 5:
+                cursor.execute("UPDATE users SET status = 'L' WHERE id = %s", (user['id'],))
+            conn.commit()
+
+            if new_attempts >= 5:
+                raise HTTPException(status_code=401, detail="Account locked due to failed attempts")
+            conn.commit()
+            raise HTTPException(status_code=401, detail="Incorrect password")
+        
+        # Reset failed attempts and update last login
+        cursor.execute("UPDATE users SET failed_attempts = 0, last_login = %s WHERE id = %s",
+                      (datetime.now(), user['id']))
+        conn.commit()
+        
+        access_token = create_access_token(data={"sub": user['empid']})
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user_info": {
+                "empid": user['empid'],
+                "empname": user['empname'],
+                "user_role": user['user_role']
+            }
+        }
+    finally:
+        cursor.close()
+        conn.close()
 
 @app.post("/api/users", response_model=ApiResponse)
 async def create_user(user_data: UserCreate, current_user: dict = Depends(require_permission('CREATE_USER'))):
@@ -275,7 +278,8 @@ async def create_user(user_data: UserCreate, current_user: dict = Depends(requir
 async def get_users(current_user: dict = Depends(require_permission('VIEW_USERS'))):
     db = VMSDatabase()
     conn = db.get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
     
     try:
         cursor.execute("""
@@ -406,7 +410,7 @@ async def create_visitor_entry(visitor_data: VisitorCreate, current_user: dict =
 
         # Generate card number
         today = datetime.now().strftime('%Y-%m-%d')
-        cursor.execute("SELECT COUNT(*) FROM vms WHERE DATE(entry_date) = %s", (today,))
+        cursor.execute("SELECT COUNT(*) FROM vms WHERE CAST(entry_date AS DATE) = %s", (today,))
         count = cursor.fetchone()[0] + 1
         card_no = f"{datetime.now().strftime('%Y%m%d')}-{count:03d}"
 
@@ -430,7 +434,7 @@ async def create_visitor_entry(visitor_data: VisitorCreate, current_user: dict =
             emp_name,
             visitor_data.emp_mobile_no,
             visitor_data.fellow_visitors or 0,
-            jsonB.dumps([f.dict() for f in visitor_data.fellow_visitors_details]) if visitor_data.fellow_visitors_details else None,
+            json.dumps([f.dict() for f in visitor_data.fellow_visitors_details]) if visitor_data.fellow_visitors_details else None,
             visitor_data.visitor_category,
             current_user['empid']
         ))
@@ -445,7 +449,8 @@ async def create_visitor_entry(visitor_data: VisitorCreate, current_user: dict =
 async def get_visitor_entries(current_user: dict = Depends(get_current_user)):
     db = VMSDatabase()
     conn = db.get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
     
     try:
         sql_query = """
@@ -473,7 +478,8 @@ async def get_visitor_entries(current_user: dict = Depends(get_current_user)):
 async def get_pending_approvals(current_user: dict = Depends(get_current_user)):
     db = VMSDatabase()
     conn = db.get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
     
     try:
         query = """
@@ -586,7 +592,8 @@ async def checkout_visitor(card_no: str, current_user: dict = Depends(require_pe
 async def get_active_visitors(current_user: dict = Depends(require_permission('CHECKOUT_VISITOR'))):
     db = VMSDatabase()
     conn = db.get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
     
     try:
         cursor.execute("""
@@ -604,7 +611,8 @@ async def get_active_visitors(current_user: dict = Depends(require_permission('C
 async def get_reports(report_type: str, date: Optional[str] = None, current_user: dict = Depends(require_permission('VIEW_REPORTS'))):
     db = VMSDatabase()
     conn = db.get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
     
     try:
         if report_type == "daily":
@@ -644,10 +652,11 @@ async def get_reports(report_type: str, date: Optional[str] = None, current_user
             cursor.execute("""
                 SELECT name, mobile, COUNT(*) as visit_count
                 FROM vms
-                WHERE entry_date >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
+                WHERE entry_date >= CURRENT_DATE - INTERVAL '90 days'
                 GROUP BY mobile, name
-                HAVING visit_count > 1
-                ORDER BY visit_count DESC LIMIT 10
+                HAVING COUNT(*) > 1
+                ORDER BY visit_count DESC
+                LIMIT 10
             """)
             results = cursor.fetchall()
             
