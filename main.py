@@ -36,7 +36,7 @@ DB_CONFIG = {
     "dbname": os.getenv("DB_NAME"),
     "user": os.getenv("DB_USER"),
     "password": os.getenv("DB_PASSWORD"),
-    "port": int(os.getenv("DB_PORT", 5432)),
+    "port": int(os.getenv("DB_PORT")),
     "sslmode": "require"
 }
 
@@ -172,23 +172,6 @@ def require_permission(permission: str):
             raise HTTPException(status_code=403, detail="Insufficient privileges")
         return current_user
     return permission_checker
-
-# API Endpoints for Db test
-@app.get("/db-test")
-def db_test():
-    try:
-        import psycopg2, os
-        psycopg2.connect(
-            host=os.getenv("DB_HOST"),
-            dbname=os.getenv("DB_NAME"),
-            user=os.getenv("DB_USER"),
-            password=os.getenv("DB_PASSWORD"),
-            port=int(os.getenv("DB_PORT")),
-            sslmode="require",
-        ).close()
-        return {"db": "connected"}
-    except Exception as e:
-        return {"error": str(e)}
 
 # API Endpoints
 @app.post("/api/auth/login", response_model=Token)
@@ -669,6 +652,32 @@ async def get_reports(report_type: str, date: Optional[str] = None, current_user
     finally:
         cursor.close()
         conn.close()
+
+# API Endpoints for Db test 
+@app.get("/db-test")
+def db_test():
+    try:
+        import psycopg2, os
+        psycopg2.connect(
+            host=os.getenv("DB_HOST"),
+            dbname=os.getenv("DB_NAME"),
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASSWORD"),
+            port=int(os.getenv("DB_PORT")),
+            sslmode="require",
+        ).close()
+        return {"db": "connected"}
+    except Exception as e:
+        return {"error": str(e)}
+
+# API Endpoints for Enviorment variables
+@app.get("/debug-env")
+def debug_env():
+    return {
+        "DB_HOST": os.environ.get("DB_HOST"),
+        "DB_PORT": os.environ.get("DB_PORT"),
+        "DB_USER": os.environ.get("DB_USER"),
+    }
 
 @app.get("/api/health")
 async def health_check():
