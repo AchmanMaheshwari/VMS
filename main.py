@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status,Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -182,7 +182,7 @@ async def login(user_login: UserLogin):
 
     
     try:
-        cursor.execute("""SELECT id, empid, empname, password_hash, status, failed_attempts, user_role FROM users WHERE empid = %s""", (user_login.empid.upper(),))
+        cursor.execute("SELECT id, empid, empname, password_hash, status, failed_attempts, user_role FROM users WHERE empid = %s", (user_login.empid.upper(),))
         user = cursor.fetchone()
         
         if not user:
@@ -679,7 +679,11 @@ def debug_env():
         "DB_USER": os.environ.get("DB_USER"),
     }
 
-@app.get("/api/health", methods=['GET','HEAD'])
+@app.head("/api/health")
+async def health_head():
+    return Response(status_code=200)
+
+@app.get("/api/health")
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.now()}
 
