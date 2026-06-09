@@ -182,7 +182,7 @@ async def login(user_login: UserLogin):
 
     
     try:
-        cursor.execute("SELECT * FROM users WHERE empid = %s", (user_login.empid.upper(),))
+        cursor.execute("""SELECT id, empid, empname, password_hash, status, failed_attempts, user_role FROM users WHERE empid = %s""", (user_login.empid.upper(),))
         user = cursor.fetchone()
         
         if not user:
@@ -679,7 +679,7 @@ def debug_env():
         "DB_USER": os.environ.get("DB_USER"),
     }
 
-@app.get("/api/health")
+@app.get("/api/health", methods=['GET','HEAD'])
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.now()}
 
